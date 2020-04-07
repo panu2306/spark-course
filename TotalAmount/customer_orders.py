@@ -12,6 +12,14 @@ def customer_line(line):
 input = sc.textFile('customer-orders.csv')
 lines = input.map(customer_line)
 customer_spendings = lines.reduceByKey(lambda x,y: x+y)
+# customer_spendings = customer_spendings.collect()
+# print('*****************Customer Spendings*********************************')
+# for customer in customer_spendings:
+#     print('{}:{}'.format(customer[0], customer[1]))
+
+# Sorted Results: 
+customer_spendings = customer_spendings.sortByKey()
 customer_spendings = customer_spendings.collect()
+print('*****************Sorted Customer Spendings*********************************')
 for customer in customer_spendings:
     print('{}:{}'.format(customer[0], customer[1]))
