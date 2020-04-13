@@ -1,47 +1,33 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Wed Dec 18 09:15:05 2019
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import explode
+from pyspark.sql.functions import split
 
-@author: Frank
-"""
+spark = SparkSession \
+    .builder \
+    .appName("StructuredNetworkWordCount") \
+    .getOrCreate()
 
-from pyspark import SparkContext
-from pyspark.streaming import StreamingContext
-from pyspark.sql import Row, SparkSession
+# Create DataFrame representing the stream of input lines from connection to localhost:9999
+lines = spark \
+    .readStream \
+    .format("text") \
+    .load("file:/home/panu/Documents/profiles/work/SparkCourse/SparkStreaming/")
 
-from pyspark.sql.functions import regexp_extract
+# Split the lines into words
+words = lines.select(
+   explode(
+       split(lines.value, " ")
+   ).alias("word")
+)
 
-# Create a SparkSession (the config bit is only for Windows!)
-spark = SparkSession.builder.config("spark.sql.warehouse.dir", "file:///C:/temp").appName("StructuredStreaming").getOrCreate()
+# Generate running word count
+wordCounts = words.groupBy("word").count()
+ # Start running the query that prints the running counts to the console
+query = wordCounts \
+    .writeStream \
+    .outputMode("complete") \
+    .format("console") \
+    .start()
 
-# Monitor the logs directory for new log data, and read in the raw lines as accessLines
-accessLines = spark.readStream.text("logs")
-
-# Parse out the common log format to a DataFrame
-contentSizeExp = r'\s(\d+)$'
-statusExp = r'\s(\d{3})\s'
-generalExp = r'\"(\S+)\s(\S+)\s*(\S*)\"'
-timeExp = r'\[(\d{2}/\w{3}/\d{4}:\d{2}:\d{2}:\d{2} -\d{4})]'
-hostExp = r'(^\S+\.[\S+\.]+\S+)\s'
-
-logsDF = accessLines.select(regexp_extract('value', hostExp, 1).alias('host'),
-                         regexp_extract('value', timeExp, 1).alias('timestamp'),
-                         regexp_extract('value', generalExp, 1).alias('method'),
-                         regexp_extract('value', generalExp, 2).alias('endpoint'),
-                         regexp_extract('value', generalExp, 3).alias('protocol'),
-                         regexp_extract('value', statusExp, 1).cast('integer').alias('status'),
-                         regexp_extract('value', contentSizeExp, 1).cast('integer').alias('content_size'))
-
-# Keep a running count of every access by status code
-statusCountsDF = logsDF.groupBy(logsDF.status).count()
-
-# Kick off our streaming query, dumping results to the console
-query = ( statusCountsDF.writeStream.outputMode("complete").format("console").queryName("counts").start() )
-
-# Run forever until terminated
+lines.write.csv(os.path.join(tempfile.mkdtemp(), 'data'))
 query.awaitTermination()
-
-# Cleanly shut down the session
-spark.stop()
-
-
